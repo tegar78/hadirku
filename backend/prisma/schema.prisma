@@ -1,0 +1,149 @@
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Role {
+  employee
+  hr_admin
+}
+
+enum AttendanceStatus {
+  on_time
+  late
+  absent
+  leave
+}
+
+enum LeaveType {
+  annual
+  sick
+  permit
+}
+
+enum LeaveStatus {
+  pending
+  approved
+  rejected
+}
+
+model User {
+  id                   Int            @id @default(autoincrement())
+  nip                  String         @unique @db.VarChar(50)
+  fullName             String         @map("full_name") @db.VarChar(150)
+  email                String         @unique @db.VarChar(150)
+  passwordHash         String         @map("password_hash") @db.VarChar(255)
+  role                 Role           @default(employee)
+  department           String         @db.VarChar(100)
+  position             String         @db.VarChar(100)
+  deviceId             String?        @map("device_id") @db.VarChar(100)
+  leaveQuota           Int            @default(12) @map("leave_quota")
+  isActive             Boolean        @default(true) @map("is_active")
+  createdAt            DateTime       @default(now()) @map("created_at")
+  updatedAt            DateTime       @updatedAt @map("updated_at")
+
+  attendances          Attendance[]
+  userSchedules        UserSchedule[]
+  leaveRequests        LeaveRequest[] @relation("UserLeaveRequests")
+  approvedLeaveRequests LeaveRequest[] @relation("ApproverLeaveRequests")
+
+  @@map("users")
+}
+
+model OfficeSetting {
+  id           Int      @id @default(autoincrement())
+  officeName   String   @map("office_name") @db.VarChar(150)
+  latitude     Float
+  longitude    Float
+  radiusMeters Float    @default(50.0) @map("radius_meters")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  @@map("office_settings")
+}
+
+model Shift {
+  id                   Int            @id @default(autoincrement())
+  shiftName            String         @map("shift_name") @db.VarChar(100)
+  startTime            String         @map("start_time") @db.VarChar(10) // "08:00:00"
+  endTime              String         @map("end_time") @db.VarChar(10)   // "17:00:00"
+  lateToleranceMinutes Int            @default(15) @map("late_tolerance_minutes")
+  createdAt            DateTime       @default(now()) @map("created_at")
+
+  userSchedules        UserSchedule[]
+  attendances          Attendance[]
+
+  @@map("shifts")
+}
+
+model UserSchedule {
+  id            Int      @id @default(autoincrement())
+  userId        Int      @map("user_id")
+  shiftId       Int      @map("shift_id")
+  effectiveDate DateTime @map("effective_date") @db.Date
+
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  shift         Shift    @relation(fields: [shiftId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, effectiveDate])
+  @@map("user_schedules")
+}
+
+model Holiday {
+  id                Int      @id @default(autoincrement())
+  holidayDate       DateTime @unique @map("holiday_date") @db.Date
+  description       String   @db.VarChar(255)
+  isNationalHoliday Boolean  @default(true) @map("is_national_holiday")
+
+  @@map("holidays")
+}
+
+model Attendance {
+  id                Int              @id @default(autoincrement())
+  userId            Int              @map("user_id")
+  shiftId           Int?             @map("shift_id")
+  attendanceDate    DateTime         @map("attendance_date") @db.Date
+  clockInTime       DateTime?        @map("clock_in_time")
+  clockOutTime      DateTime?        @map("clock_out_time")
+  latIn             Float?           @map("lat_in")
+  longIn            Float?           @map("long_in")
+  latOut            Float?           @map("lat_out")
+  longOut           Float?           @map("long_out")
+  distanceInMeters  Float?           @map("distance_in_meters")
+  distanceOutMeters Float?           @map("distance_out_meters")
+  photoInPath       String?          @map("photo_in_path") @db.VarChar(255)
+  photoOutPath      String?          @map("photo_out_path") @db.VarChar(255)
+  status            AttendanceStatus @default(on_time)
+  notes             String?          @db.Text
+  createdAt         DateTime         @default(now()) @map("created_at")
+  updatedAt         DateTime         @updatedAt @map("updated_at")
+
+  user              User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  shift             Shift?           @relation(fields: [shiftId], references: [id])
+
+  @@unique([userId, attendanceDate])
+  @@map("attendances")
+}
+
+model LeaveRequest {
+  id              Int         @id @default(autoincrement())
+  userId          Int         @map("user_id")
+  leaveType       LeaveType   @map("leave_type")
+  startDate       DateTime    @map("start_date") @db.Date
+  endDate         DateTime    @map("end_date") @db.Date
+  reason          String      @db.Text
+  attachmentPath  String?     @map("attachment_path") @db.VarChar(255)
+  status          LeaveStatus @default(pending)
+  approvedBy      Int?        @map("approved_by")
+  rejectionReason String?     @map("rejection_reason") @db.Text
+  createdAt       DateTime    @default(now()) @map("created_at")
+  updatedAt       DateTime    @updatedAt @map("updated_at")
+
+  user            User        @relation("UserLeaveRequests", fields: [userId], references: [id], onDelete: Cascade)
+  approver        User?       @relation("ApproverLeaveRequests", fields: [approvedBy], references: [id])
+
+  @@map("leave_requests")
+}
